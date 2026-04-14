@@ -1,0 +1,62 @@
+# Workorder System - Docker Compose Configuration
+# For Synology NAS DSM 7.1
+
+version: '3.8'
+
+services:
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: workorder-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=sqlite:///./workorder.db
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - PHOTO_BASE_PATH=/volume1/docker/workorder/photos
+      - MAX_MEMBERS=5
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://192.168.1.254:38428}
+    volumes:
+      # Persist database
+      - ./data:/app/data
+      # Persist photos
+      - ${PHOTO_PATH:-/volume1/docker/workorder}:/volume1/docker/workorder
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - workorder-network
+
+  # Frontend web service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: workorder-frontend
+    restart: unless-stopped
+    ports:
+      - "38428:80"
+    depends_on:
+      - backend
+    networks:
+      - workorder-network
+
+networks:
+  workorder-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}
